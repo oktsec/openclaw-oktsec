@@ -136,7 +136,7 @@ export default function register(api: OpenClawPluginApi) {
   api.on("message_sending", async (event: unknown, ctx: unknown) => {
     const e = event as Record<string, unknown>;
     const c = (ctx || {}) as Record<string, unknown>;
-    log.info(`oktsec: message_sending keys=[${keys(e)}] ctx=[${keys(c)}]`);
+    log.warn(`oktsec: >>> message_sending FIRED keys=[${keys(e)}] ctx=[${keys(c)}]`);
 
     const content = String(e.content || e.body || e.text || e.message || "");
     if (!content) return;
@@ -156,7 +156,7 @@ export default function register(api: OpenClawPluginApi) {
   api.on("message_sent", async (event: unknown, ctx: unknown) => {
     const e = event as Record<string, unknown>;
     const c = (ctx || {}) as Record<string, unknown>;
-    log.info(`oktsec: message_sent keys=[${keys(e)}] ctx=[${keys(c)}]`);
+    log.warn(`oktsec: >>> message_sent FIRED keys=[${keys(e)}] ctx=[${keys(c)}]`);
 
     const content = String(e.content || e.body || e.text || e.message || "");
     if (!content) return;
@@ -166,16 +166,31 @@ export default function register(api: OpenClawPluginApi) {
     await forward("message_sent", content, "post_tool_call", `openclaw-${agentId}`, session);
   });
 
-  // 6. LLM input/output monitoring (log only, no scanning - prompts contain
-  // legitimate metadata that triggers false positives like TC-005 and IAP-002)
-  api.on("llm_input", async (_event: unknown, ctx: unknown) => {
+  // 6. LLM output = agent response. This is how we capture what the agent says,
+  // since message_sending/message_sent hooks don't fire for Telegram.
+  // We DON'T scan llm_input (system prompts trigger false positives).
+  api.on("llm_output", async (event: unknown, ctx: unknown) => {
+    const e = event as Record<string, unknown>;
     const c = (ctx || {}) as Record<string, unknown>;
-    log.debug(`oktsec: llm_input agent=${c.agentId || "main"}`);
-  });
 
-  api.on("llm_output", async (_event: unknown, ctx: unknown) => {
-    const c = (ctx || {}) as Record<string, unknown>;
-    log.debug(`oktsec: llm_output agent=${c.agentId || "main"}`);
+    // Extract assistant response text
+    const texts = e.assistantTexts || e.content || e.text || e.response || "";
+    let content = "";
+    if (Array.isArray(texts)) {
+      content = (texts as string[]).join("\n");
+    } else if (typeof texts === "string") {
+      content = texts;
+    } else {
+      content = JSON.stringify(texts);
+    }
+
+    if (!content || content.length < 3) return;
+
+    const agentId = String(c.agentId || c.agent || "main");
+    const session = String(c.sessionKey || c.sessionId || "");
+
+    log.info(`oktsec: llm_output len=${content.length} agent=${agentId}`);
+    await forward("agent_response", content.slice(0, 2000), "post_tool_call", `openclaw-${agentId}`, session);
   });
 
   // 7. Slash command
