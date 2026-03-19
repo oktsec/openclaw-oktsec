@@ -1,6 +1,6 @@
 {
   "name": "@oktsec/openclaw",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "oktsec plugin for OpenClaw - runtime security for AI agent tool calls",
   "type": "module",
   "main": "dist/index.js",
