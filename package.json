@@ -8,7 +8,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/oktsec/openclaw-oktsec"
+    "url": "https://github.com/oktsec/oktsec-openclaw"
   },
   "engines": {
     "node": ">=20.0.0"
