@@ -13,6 +13,9 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "openclaw": {
+    "extensions": ["./dist/index.js"]
+  },
   "files": [
     "dist",
     "openclaw.plugin.json"

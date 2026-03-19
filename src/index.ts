@@ -1,22 +1,10 @@
 /**
  * oktsec plugin for OpenClaw.
- *
- * Intercepts every tool call before execution, scans through 188 detection
- * rules, and blocks threats in real-time. Tamper-evident audit trail with
- * SHA-256 hash chain and Ed25519 signatures.
- *
- * The plugin is a thin client. All detection, policy enforcement, and audit
- * logging runs in the oktsec Go binary (gateway).
+ * Minimal version for initial integration testing.
  */
 
-import { createHooks } from "./hooks.js";
-import { registerCliCommands } from "./cli.js";
-import type { OktsecConfig } from "./client.js";
+import { OktsecClient, type OktsecConfig } from "./client.js";
 
-/**
- * OpenClaw Plugin API (subset of types used by this plugin).
- * Full types would come from openclaw/plugin-sdk in production.
- */
 interface OpenClawPluginApi {
   id: string;
   name: string;
@@ -29,21 +17,11 @@ interface OpenClawPluginApi {
     error(msg: string): void;
     debug(msg: string): void;
   };
-  registerCommand(opts: {
-    name: string;
-    description: string;
-    handler: (args: string) => Promise<string>;
-  }): void;
-  registerCli(fn: (program: unknown) => void): void;
-  registerHook(opts: {
-    event: string;
-    handler: (event: unknown) => Promise<unknown>;
-  }): void;
-  registerService(opts: {
-    name: string;
-    start: () => Promise<void>;
-    stop?: () => Promise<void>;
-  }): void;
+  registerCommand: (...args: unknown[]) => void;
+  registerHook: (...args: unknown[]) => void;
+  registerCli: (...args: unknown[]) => void;
+  registerService: (...args: unknown[]) => void;
+  [key: string]: unknown;
 }
 
 function resolveConfig(api: OpenClawPluginApi): OktsecConfig {
@@ -58,96 +36,57 @@ function resolveConfig(api: OpenClawPluginApi): OktsecConfig {
 
 export default function register(api: OpenClawPluginApi) {
   const config = resolveConfig(api);
-  const hooks = createHooks(config);
+  const client = new OktsecClient(config);
   const log = api.logger;
 
-  // 1. Tool call interception (core security feature)
-  api.registerHook({
-    event: "preToolCall",
-    handler: async (event: unknown) => {
-      const e = event as { toolName: string; toolInput: Record<string, unknown>; sessionId?: string };
-      const result = await hooks.preToolCall({
-        toolName: e.toolName,
-        toolInput: e.toolInput,
-        sessionId: e.sessionId,
-      });
-      if (result.block) {
-        log.warn(`oktsec blocked ${e.toolName}: ${result.reason}`);
-      }
-      return result;
-    },
-  });
+  log.info(`oktsec plugin loaded (${config.mode} mode, gateway: ${config.gatewayUrl})`);
 
-  api.registerHook({
-    event: "postToolCall",
-    handler: async (event: unknown) => {
-      const e = event as { toolName: string; toolInput: Record<string, unknown>; sessionId?: string };
-      await hooks.postToolCall({
-        toolName: e.toolName,
-        toolInput: e.toolInput,
-        sessionId: e.sessionId,
-      });
-      return {};
-    },
-  });
+  // Register /oktsec command
+  try {
+    api.registerCommand({
+      name: "oktsec",
+      description: "Security status and controls",
+      handler: async (ctx: Record<string, unknown>) => {
+        const args = ((ctx && ctx.args) || "") as string;
+        const cmd = args.trim().split(/\s+/)[0] || "status";
 
-  // 2. Slash command: /oktsec
-  api.registerCommand({
-    name: "oktsec",
-    description: "Security status and controls",
-    handler: async (args: string) => {
-      const cmd = args.trim().split(/\s+/)[0] || "status";
-
-      if (cmd === "status") {
-        const health = await hooks.client.health();
-        if (!health) return "oktsec gateway not reachable. Start with: oktsec run";
-        const stats = await hooks.client.stats();
-        let out = `oktsec: ${health.status} (${config.mode} mode)\n`;
-        if (stats) {
-          out += `Pipeline: ${stats.total} events, ${stats.blocked} blocked, ${stats.quarantined} quarantined\n`;
+        if (cmd === "status") {
+          const health = await client.health();
+          if (!health) return { reply: "oktsec gateway not reachable. Start with: oktsec run" };
+          const stats = await client.stats();
+          let out = `oktsec: ${health.status} (${config.mode} mode)\n`;
+          if (stats) {
+            out += `Pipeline: ${stats.total} events, ${stats.blocked} blocked, ${stats.quarantined} quarantined\n`;
+          }
+          out += `Dashboard: ${config.dashboardUrl}`;
+          return { reply: out };
         }
-        out += `Dashboard: ${config.dashboardUrl}`;
-        return out;
+
+        return { reply: "Usage: /oktsec [status|dashboard]" };
+      },
+    });
+  } catch (e) {
+    log.warn("oktsec: registerCommand failed: " + String(e));
+  }
+
+  // Register message hooks
+  try {
+    api.registerHook("message:received", async (event: Record<string, unknown>) => {
+      const ctx = (event && event.context) as Record<string, unknown> | undefined;
+      if (!ctx || !ctx.content) return;
+
+      const decision = await client.sendToolEvent({
+        tool_name: "message",
+        tool_input: String(ctx.content),
+        event: "pre_tool_call",
+        agent: String(ctx.from || config.agent),
+      });
+
+      if (decision.decision === "block" && config.mode === "enforce") {
+        log.warn(`oktsec blocked message from ${ctx.from}: ${decision.reason}`);
       }
-
-      if (cmd === "dashboard") {
-        return `Open: ${config.dashboardUrl}`;
-      }
-
-      return "Usage: /oktsec [status|dashboard]";
-    },
-  });
-
-  // 3. CLI subcommands: openclaw oktsec <cmd>
-  api.registerCli((program: unknown) => {
-    registerCliCommands(program as Parameters<typeof registerCliCommands>[0], config, (msg) => log.info(msg));
-  });
-
-  // 4. Background health monitor
-  let healthInterval: ReturnType<typeof setInterval> | null = null;
-
-  api.registerService({
-    name: "oktsec-monitor",
-    start: async () => {
-      const health = await hooks.client.health();
-      if (health) {
-        log.info(`oktsec connected: ${config.gatewayUrl} (${config.mode} mode)`);
-      } else {
-        log.warn(`oktsec gateway not reachable at ${config.gatewayUrl}`);
-      }
-
-      // Periodic health check every 30s
-      healthInterval = setInterval(async () => {
-        const h = await hooks.client.health();
-        if (!h) {
-          log.warn("oktsec gateway connection lost");
-        }
-      }, 30_000);
-    },
-    stop: async () => {
-      if (healthInterval) clearInterval(healthInterval);
-    },
-  });
-
-  log.info(`oktsec plugin registered (${config.mode} mode, gateway: ${config.gatewayUrl})`);
+    });
+  } catch (e) {
+    log.warn("oktsec: registerHook failed: " + String(e));
+  }
 }
