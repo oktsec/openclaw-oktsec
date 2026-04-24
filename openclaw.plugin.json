@@ -1,8 +1,8 @@
 {
   "id": "oktsec",
   "name": "oktsec",
-  "version": "0.1.0",
-  "description": "Runtime security for AI agent tool calls. 188 detection rules, tamper-evident audit trail, delegation chains.",
+  "version": "0.2.1",
+  "description": "Runtime security for AI agent tool calls. 268 detection rules across 19 categories, tamper-evident audit trail, delegation chains.",
   "configSchema": {
     "type": "object",
     "properties": {
