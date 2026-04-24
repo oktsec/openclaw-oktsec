@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 [![oktsec](https://img.shields.io/badge/powered%20by-oktsec-8b7cf7)](https://github.com/oktsec/oktsec)
 
-Runtime security plugin for OpenClaw. Intercepts agent tool calls and messages, scans through 188 detection rules, and blocks threats before execution.
+Runtime security plugin for OpenClaw. Intercepts agent tool calls and messages, scans through 268 detection rules, and blocks threats before execution.
 
 ## Install
 
@@ -18,13 +18,13 @@ oktsec gateway must be running:
 
 ```bash
 brew install oktsec/tap/oktsec
-oktsec run
+oktsec serve
 ```
 
 ## Quick start
 
 1. Install the plugin: `openclaw plugins install @oktsec/openclaw`
-2. Start oktsec: `oktsec run`
+2. Start oktsec: `oktsec serve`
 3. Start OpenClaw: `openclaw gateway`
 4. Send a message via Telegram, Discord, or the web chat
 5. Open the oktsec dashboard to see every event in real-time
@@ -40,7 +40,7 @@ oktsec run
 
 Every intercepted event is scanned through oktsec's security pipeline:
 
-- **188 detection rules** across 15 categories (prompt injection, credential leaks, data exfiltration, supply chain, MCP attacks, and more)
+- **268 detection rules** across 19 categories (prompt injection, credential leaks, data exfiltration, supply chain, MCP attacks, and more)
 - **4 verdicts**: clean, flag, quarantine, block
 - **Tamper-evident audit trail** with SHA-256 hash chain and Ed25519 signatures
 - **Real-time dashboard** and terminal UI
@@ -99,7 +99,7 @@ User (Telegram/Discord/Web)
   ▼
 OpenClaw Gateway
   │
-  ├── oktsec plugin ──► oktsec gateway (188 rules)
+  ├── oktsec plugin ──► oktsec gateway (268 rules)
   │                         │
   │                     allow / block
   │                         │
@@ -121,7 +121,7 @@ oktsec and NemoClaw are complementary OpenClaw plugins:
 | Layer | NemoClaw | oktsec |
 |-------|----------|--------|
 | **What** | Sandbox isolation + NVIDIA inference | Content detection + audit trail |
-| **How** | Container boundaries, network allowlists | 188 detection rules, tool-level scanning |
+| **How** | Container boundaries, network allowlists | 268 detection rules, tool-level scanning |
 | **Blocks** | Unauthorized network connections | Prompt injection, credential leaks, exfiltration |
 
 Install both for defense in depth:
